@@ -1,0 +1,19 @@
+---
+name: pr-review
+description: "Reviews a GitHub pull request diff and flags issues by severity"
+allowed-tools: Bash Read Write
+---
+# PR Review Skill
+
+Given a PR number and repo (owner/repo), fetch the diff and perform structured review.
+
+## Steps
+1. Fetch PR files: GET /repos/{owner}/{repo}/pulls/{pr_number}/files
+2. For each changed file analyze:
+   - Security: SQL injection, XSS, hardcoded secrets, insecure deps
+   - Logic errors and missing edge cases
+   - Missing error handling
+   - Code style violations
+3. Assign severity: CRITICAL / HIGH / MEDIUM / LOW / INFO
+4. Format as Markdown with per-file sections
+5. End with summary: issue counts + APPROVE or REQUEST CHANGES verdict
