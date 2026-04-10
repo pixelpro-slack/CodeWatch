@@ -1,0 +1,18 @@
+---
+name: commit-analyzer
+description: "Summarizes what changed in recent commits in plain English"
+allowed-tools: Bash Read Write
+---
+# Commit Analyzer Skill
+
+Fetch recent commits from the repo and generate a human-readable summary.
+
+## Steps
+1. Fetch commits: GET /repos/{owner}/{repo}/commits (limit: 10 default)
+2. For each commit fetch the diff: GET /repos/{owner}/{repo}/commits/{sha}
+3. Group changes by: features added, bugs fixed, refactors, config/infra changes
+4. Produce a structured summary:
+   - One-line overview of what changed overall
+   - Bulleted list grouped by category
+   - Files most heavily changed
+5. If a conventional commit format is detected, use it to improve grouping
