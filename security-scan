@@ -1,0 +1,23 @@
+---
+name: security-scan
+description: "Scans repo files for OWASP Top 10 vulnerabilities and secret leakage"
+allowed-tools: Bash Read Write
+---
+# Security Scan Skill
+
+Perform a targeted security audit of specified files or the entire repo.
+
+## Steps
+1. Read target files using the Read tool
+2. Scan for these patterns:
+   - Hardcoded secrets: API keys, tokens, passwords in plain text
+   - Injection: unsanitized user input passed to SQL/shell/eval
+   - Broken auth: JWT without expiry, weak session management
+   - Sensitive data exposure: PII logged or returned in API responses
+   - Insecure dependencies: check package.json/requirements.txt versions
+3. For each finding output:
+   - File path and line number
+   - Vulnerability type and OWASP category
+   - Severity (CRITICAL/HIGH/MEDIUM/LOW)
+   - Recommended fix with code example
+4. Never print the actual secret value — redact it as [REDACTED]
