@@ -1,0 +1,21 @@
+---
+name: changelog-gen
+description: "Generates a formatted CHANGELOG.md from commit history between two refs"
+allowed-tools: Bash Read Write
+---
+# Changelog Generator Skill
+
+Generate a CHANGELOG.md entry from git commits between two refs (tags or SHAs).
+
+## Steps
+1. Accept: from_ref, to_ref, version label (e.g., v1.2.0)
+2. Fetch commits between refs via GitHub API compare endpoint
+3. Categorize commits by: Breaking Changes, Features, Bug Fixes, Performance, Docs
+4. Format output as Keep-a-Changelog standard:
+   ## [version] - YYYY-MM-DD
+   ### Breaking Changes
+   ### Added
+   ### Fixed
+   ### Changed
+5. Write the result to CHANGELOG.md using the Write tool
+6. Output a confirmation with the number of commits processed
