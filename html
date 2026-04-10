@@ -1,0 +1,1391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CodeWatch — AI Code Review Agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0c10;
+  --bg2: #0f1117;
+  --bg3: #161b24;
+  --bg4: #1c2333;
+  --border: rgba(99,179,237,0.12);
+  --border2: rgba(99,179,237,0.22);
+  --accent: #3fb8f0;
+  --accent2: #00e5a0;
+  --accent3: #f06a3f;
+  --text: #e2eaf5;
+  --text2: #8899aa;
+  --text3: #556677;
+  --critical: #ff4757;
+  --high: #ff8c00;
+  --medium: #f0c040;
+  --low: #3fb8f0;
+  --info: #00e5a0;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Syne', sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--mono); overflow: hidden; }
+
+/* Animated background grid */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image: 
+    linear-gradient(rgba(63,184,240,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(63,184,240,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none; z-index: 0;
+}
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  background: radial-gradient(ellipse 80% 60% at 20% 0%, rgba(63,184,240,0.06) 0%, transparent 60%),
+              radial-gradient(ellipse 60% 40% at 80% 100%, rgba(0,229,160,0.04) 0%, transparent 60%);
+  pointer-events: none; z-index: 0;
+}
+
+.app { display: flex; height: 100vh; position: relative; z-index: 1; }
+
+/* SIDEBAR */
+.sidebar {
+  width: 260px; flex-shrink: 0;
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.logo {
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+}
+.logo-icon {
+  width: 32px; height: 32px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px;
+}
+.logo-text { font-family: var(--sans); font-weight: 800; font-size: 18px; color: var(--text); letter-spacing: -0.02em; }
+.logo-badge { font-size: 9px; color: var(--accent2); letter-spacing: 0.1em; margin-top: 1px; }
+
+.nav { padding: 12px 10px; flex: 1; overflow-y: auto; }
+.nav-section-title { font-size: 9px; letter-spacing: 0.15em; color: var(--text3); padding: 8px 10px 4px; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px; border-radius: 6px; cursor: pointer;
+  font-size: 12px; color: var(--text2);
+  transition: all 0.15s; margin-bottom: 2px;
+}
+.nav-item:hover { background: var(--bg3); color: var(--text); }
+.nav-item.active { background: rgba(63,184,240,0.1); color: var(--accent); border: 1px solid rgba(63,184,240,0.15); }
+.nav-icon { width: 16px; text-align: center; font-size: 14px; }
+.nav-badge {
+  margin-left: auto; font-size: 10px; padding: 1px 7px;
+  background: rgba(255,71,87,0.15); color: var(--critical);
+  border-radius: 10px; border: 1px solid rgba(255,71,87,0.2);
+}
+
+.sidebar-stats {
+  padding: 16px; border-top: 1px solid var(--border);
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+}
+.stat-mini { background: var(--bg3); border-radius: 6px; padding: 10px; }
+.stat-mini-val { font-size: 20px; font-weight: 600; color: var(--text); }
+.stat-mini-label { font-size: 9px; color: var(--text3); letter-spacing: 0.08em; margin-top: 2px; }
+
+/* MAIN AREA */
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+/* TOPBAR */
+.topbar {
+  height: 56px; flex-shrink: 0;
+  background: var(--bg2); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 16px; padding: 0 24px;
+}
+.topbar-title { font-family: var(--sans); font-weight: 700; font-size: 15px; color: var(--text); }
+.topbar-sub { font-size: 11px; color: var(--text3); }
+.topbar-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.btn {
+  padding: 7px 16px; border-radius: 6px; font-size: 12px; font-family: var(--mono);
+  cursor: pointer; border: none; transition: all 0.15s; white-space: nowrap;
+}
+.btn-ghost { background: transparent; color: var(--text2); border: 1px solid var(--border2); }
+.btn-ghost:hover { background: var(--bg3); color: var(--text); }
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent), #2196f3);
+  color: #fff; font-weight: 600;
+  box-shadow: 0 0 20px rgba(63,184,240,0.3);
+}
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 24px rgba(63,184,240,0.4); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.btn-danger { background: rgba(255,71,87,0.1); color: var(--critical); border: 1px solid rgba(255,71,87,0.2); }
+.btn-success { background: rgba(0,229,160,0.1); color: var(--accent2); border: 1px solid rgba(0,229,160,0.2); }
+
+/* CONTENT */
+.content { flex: 1; overflow-y: auto; padding: 24px; display: none; }
+.content.active { display: block; }
+
+/* PANELS */
+.panel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.panel { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.panel-header {
+  padding: 14px 18px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+}
+.panel-title { font-family: var(--sans); font-weight: 700; font-size: 13px; color: var(--text); }
+.panel-sub { font-size: 11px; color: var(--text3); margin-left: auto; }
+.panel-body { padding: 18px; }
+
+/* CODE EDITOR AREA */
+.editor-wrap { position: relative; }
+.editor-label {
+  font-size: 10px; letter-spacing: 0.12em; color: var(--text3);
+  padding: 8px 14px 0; font-family: var(--sans);
+}
+textarea.code-input {
+  width: 100%; min-height: 280px;
+  background: var(--bg3); border: none; outline: none;
+  color: #a8d8ff; font-family: var(--mono); font-size: 12.5px; line-height: 1.7;
+  padding: 14px; resize: vertical;
+  border-bottom: 1px solid var(--border);
+  tab-size: 2;
+}
+textarea.code-input::placeholder { color: var(--text3); }
+
+.lang-select {
+  background: var(--bg3); border: none; color: var(--text2);
+  font-family: var(--mono); font-size: 11px; padding: 6px 10px;
+  cursor: pointer; outline: none; border-radius: 4px;
+  border: 1px solid var(--border);
+}
+.lang-select option { background: var(--bg3); }
+
+/* RESULTS */
+.result-container { min-height: 200px; }
+.result-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: 200px; color: var(--text3); gap: 10px; font-size: 12px;
+}
+.result-empty-icon { font-size: 32px; opacity: 0.3; }
+
+.loading-state { display: none; align-items: center; gap: 12px; padding: 20px; }
+.loading-state.visible { display: flex; }
+.spinner {
+  width: 18px; height: 18px; border: 2px solid var(--border2);
+  border-top-color: var(--accent); border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.loading-steps { display: flex; flex-direction: column; gap: 4px; }
+.loading-step { font-size: 11px; color: var(--text2); animation: fadeIn 0.4s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* ISSUE CARDS */
+.issue-list { display: flex; flex-direction: column; gap: 10px; }
+.issue-card {
+  background: var(--bg3); border-radius: 8px;
+  border-left: 3px solid transparent; padding: 14px 16px;
+  animation: slideIn 0.3s ease;
+}
+@keyframes slideIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.issue-card.critical { border-left-color: var(--critical); }
+.issue-card.high { border-left-color: var(--high); }
+.issue-card.medium { border-left-color: var(--medium); }
+.issue-card.low { border-left-color: var(--low); }
+.issue-card.info { border-left-color: var(--info); }
+
+.issue-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.severity-badge {
+  font-size: 9px; font-weight: 600; letter-spacing: 0.1em;
+  padding: 2px 8px; border-radius: 3px;
+}
+.badge-critical { background: rgba(255,71,87,0.15); color: var(--critical); border: 1px solid rgba(255,71,87,0.25); }
+.badge-high { background: rgba(255,140,0,0.15); color: var(--high); border: 1px solid rgba(255,140,0,0.25); }
+.badge-medium { background: rgba(240,192,64,0.15); color: var(--medium); border: 1px solid rgba(240,192,64,0.25); }
+.badge-low { background: rgba(63,184,240,0.15); color: var(--low); border: 1px solid rgba(63,184,240,0.25); }
+.badge-info { background: rgba(0,229,160,0.15); color: var(--info); border: 1px solid rgba(0,229,160,0.25); }
+
+.issue-title { font-size: 13px; font-weight: 500; color: var(--text); }
+.issue-location { font-size: 10px; color: var(--text3); margin-left: auto; font-family: var(--mono); }
+.issue-desc { font-size: 12px; color: var(--text2); line-height: 1.6; margin-bottom: 10px; }
+.issue-fix { 
+  background: var(--bg4); border-radius: 6px; padding: 10px 12px;
+  font-size: 11px; font-family: var(--mono); color: #a8d8ff; line-height: 1.6;
+  border: 1px solid var(--border);
+}
+.issue-fix-label { font-size: 9px; color: var(--accent2); letter-spacing: 0.1em; margin-bottom: 6px; }
+
+/* SUMMARY BAR */
+.summary-bar {
+  display: flex; gap: 12px; padding: 14px 18px;
+  background: var(--bg3); border-bottom: 1px solid var(--border);
+  flex-wrap: wrap; align-items: center;
+}
+.summary-item { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.summary-dot { width: 8px; height: 8px; border-radius: 50%; }
+.verdict {
+  margin-left: auto; font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+  padding: 4px 14px; border-radius: 4px;
+}
+.verdict-approve { background: rgba(0,229,160,0.1); color: var(--accent2); border: 1px solid rgba(0,229,160,0.2); }
+.verdict-reject { background: rgba(255,71,87,0.1); color: var(--critical); border: 1px solid rgba(255,71,87,0.2); }
+.verdict-discuss { background: rgba(240,192,64,0.1); color: var(--medium); border: 1px solid rgba(240,192,64,0.2); }
+
+/* SECURITY TAB */
+.owasp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.owasp-card {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px; cursor: pointer;
+  transition: all 0.15s;
+}
+.owasp-card:hover { border-color: var(--border2); background: var(--bg4); }
+.owasp-card.detected { border-color: rgba(255,71,87,0.3); background: rgba(255,71,87,0.05); }
+.owasp-card.clean { border-color: rgba(0,229,160,0.2); background: rgba(0,229,160,0.03); }
+.owasp-num { font-size: 10px; color: var(--text3); letter-spacing: 0.1em; margin-bottom: 4px; }
+.owasp-name { font-size: 12px; font-weight: 500; color: var(--text); margin-bottom: 6px; }
+.owasp-status { font-size: 10px; }
+.owasp-status.detected { color: var(--critical); }
+.owasp-status.clean { color: var(--accent2); }
+
+/* AGENT CONFIG TAB */
+.config-section { margin-bottom: 20px; }
+.config-label { font-size: 10px; letter-spacing: 0.12em; color: var(--text3); margin-bottom: 8px; font-family: var(--sans); }
+.config-file {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 8px; overflow: hidden;
+}
+.config-file-header {
+  padding: 10px 14px; background: var(--bg4);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; color: var(--accent);
+}
+.config-file-body {
+  padding: 14px; font-size: 12px; font-family: var(--mono);
+  color: var(--text2); line-height: 1.7; white-space: pre;
+  max-height: 200px; overflow-y: auto;
+}
+
+/* HISTORY TAB */
+.history-item {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px 16px; margin-bottom: 10px;
+  display: flex; align-items: center; gap: 14px; cursor: pointer;
+  transition: all 0.15s;
+}
+.history-item:hover { border-color: var(--border2); }
+.history-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.history-info { flex: 1; }
+.history-title { font-size: 13px; color: var(--text); margin-bottom: 3px; }
+.history-meta { font-size: 11px; color: var(--text3); }
+.history-score {
+  font-size: 20px; font-weight: 600;
+  font-family: var(--sans);
+}
+
+/* ANALYZE FULL TAB */
+.prompt-area {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px;
+  display: flex; gap: 10px; margin-bottom: 16px;
+}
+textarea.prompt-input {
+  flex: 1; background: transparent; border: none; outline: none;
+  color: var(--text); font-family: var(--mono); font-size: 12px;
+  resize: none; min-height: 60px; line-height: 1.6;
+}
+textarea.prompt-input::placeholder { color: var(--text3); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+/* STREAMING TEXT */
+.stream-output {
+  font-size: 13px; color: var(--text); line-height: 1.8;
+  white-space: pre-wrap; font-family: var(--mono);
+  background: var(--bg3); border-radius: 8px; padding: 18px;
+  border: 1px solid var(--border); min-height: 100px;
+}
+.cursor { display: inline-block; width: 2px; height: 14px; background: var(--accent); animation: blink 1s step-end infinite; vertical-align: middle; margin-left: 2px; }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* Scan progress */
+.scan-bar { height: 3px; background: var(--border); border-radius: 2px; margin-bottom: 16px; overflow: hidden; }
+.scan-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 2px; width: 0%; transition: width 0.4s ease; }
+
+.metric-row { display: flex; gap: 12px; margin-bottom: 16px; }
+.metric-card {
+  flex: 1; background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px; text-align: center;
+}
+.metric-val { font-family: var(--sans); font-size: 28px; font-weight: 700; color: var(--text); }
+.metric-label { font-size: 10px; color: var(--text3); letter-spacing: 0.1em; margin-top: 4px; }
+.metric-card.good .metric-val { color: var(--accent2); }
+.metric-card.warn .metric-val { color: var(--medium); }
+.metric-card.bad .metric-val { color: var(--critical); }
+
+/* Tabs inside content */
+.inner-tabs { display: flex; gap: 2px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+.inner-tab {
+  padding: 8px 16px; font-size: 12px; color: var(--text3);
+  cursor: pointer; border-bottom: 2px solid transparent;
+  transition: all 0.15s; margin-bottom: -1px;
+}
+.inner-tab:hover { color: var(--text); }
+.inner-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.inner-content { display: none; }
+.inner-content.active { display: block; }
+
+/* Notification dot */
+.notif { width: 6px; height: 6px; border-radius: 50%; background: var(--critical); margin-left: auto; }
+
+/* Pulse animation for live */
+.live-badge { 
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10px; color: var(--accent2); letter-spacing: 0.05em;
+  padding: 3px 10px; background: rgba(0,229,160,0.08);
+  border: 1px solid rgba(0,229,160,0.2); border-radius: 12px;
+}
+.live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent2); animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.8); } }
+
+.tag { display: inline-block; font-size: 10px; padding: 2px 8px; border-radius: 3px; margin: 2px; }
+.tag-blue { background: rgba(63,184,240,0.1); color: var(--low); border: 1px solid rgba(63,184,240,0.2); }
+.tag-green { background: rgba(0,229,160,0.1); color: var(--info); border: 1px solid rgba(0,229,160,0.2); }
+
+.divider { height: 1px; background: var(--border); margin: 16px 0; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="logo">
+      <div class="logo-icon">⚡</div>
+      <div>
+        <div class="logo-text">CodeWatch</div>
+        <div class="logo-badge">GITAGENT POWERED</div>
+      </div>
+    </div>
+    <div class="nav">
+      <div class="nav-section-title">WORKSPACE</div>
+      <div class="nav-item active" onclick="switchView('review')">
+        <span class="nav-icon">🔍</span> PR Review
+      </div>
+      <div class="nav-item" onclick="switchView('security')">
+        <span class="nav-icon">🛡</span> Security Scan
+        <span class="nav-badge" id="vuln-count">0</span>
+      </div>
+      <div class="nav-item" onclick="switchView('analyze')">
+        <span class="nav-icon">💬</span> AI Analyze
+      </div>
+      <div class="nav-item" onclick="switchView('changelog')">
+        <span class="nav-icon">📋</span> Changelog Gen
+      </div>
+      <div class="nav-section-title" style="margin-top:12px">AGENT</div>
+      <div class="nav-item" onclick="switchView('config')">
+        <span class="nav-icon">⚙️</span> Agent Config
+      </div>
+      <div class="nav-item" onclick="switchView('history')">
+        <span class="nav-icon">📁</span> History
+        <div class="notif" id="history-notif" style="display:none"></div>
+      </div>
+    </div>
+    <div class="sidebar-stats">
+      <div class="stat-mini">
+        <div class="stat-mini-val" id="stat-reviews">0</div>
+        <div class="stat-mini-label">REVIEWS</div>
+      </div>
+      <div class="stat-mini">
+        <div class="stat-mini-val" id="stat-issues">0</div>
+        <div class="stat-mini-label">ISSUES</div>
+      </div>
+      <div class="stat-mini">
+        <div class="stat-mini-val" id="stat-critical">0</div>
+        <div class="stat-mini-label">CRITICAL</div>
+      </div>
+      <div class="stat-mini">
+        <div class="stat-mini-val" id="stat-score">—</div>
+        <div class="stat-mini-label">SCORE</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- TOPBAR -->
+    <div class="topbar">
+      <div>
+        <div class="topbar-title" id="view-title">PR Code Review</div>
+        <div class="topbar-sub" id="view-sub">Paste code to analyze with AI</div>
+      </div>
+      <div class="live-badge"><div class="live-dot"></div>CLAUDE claude-sonnet-4-6</div>
+      <div class="topbar-actions">
+        <select class="lang-select" id="lang-select">
+          <option value="javascript">JavaScript</option>
+          <option value="python">Python</option>
+          <option value="typescript">TypeScript</option>
+          <option value="go">Go</option>
+          <option value="rust">Rust</option>
+          <option value="java">Java</option>
+          <option value="php">PHP</option>
+          <option value="ruby">Ruby</option>
+          <option value="sql">SQL</option>
+          <option value="bash">Bash</option>
+        </select>
+        <button class="btn btn-ghost" onclick="clearAll()">Clear</button>
+        <button class="btn btn-primary" id="run-btn" onclick="runAnalysis()">▶ Run Review</button>
+      </div>
+    </div>
+
+    <!-- PR REVIEW VIEW -->
+    <div class="content active" id="view-review">
+      <div class="panel-grid" style="grid-template-columns: 1fr 1fr; height: calc(100vh - 100px);">
+        <!-- Input -->
+        <div class="panel" style="display:flex; flex-direction:column;">
+          <div class="panel-header">
+            <span style="color:var(--accent)">❮❯</span>
+            <span class="panel-title">Code Input</span>
+            <span class="panel-sub">Paste your code or diff</span>
+          </div>
+          <div style="flex:1; display:flex; flex-direction:column; overflow:hidden;">
+            <textarea class="code-input" id="code-input" style="flex:1; min-height:unset;" placeholder="// Paste your code here for review...
+// Supports diffs, functions, classes, files
+//
+// Example:
+function authenticate(user, pass) {
+  const query = 'SELECT * FROM users WHERE user=\'' + user + '\'';
+  return db.query(query);
+}"></textarea>
+            <div style="padding: 10px 14px; background: var(--bg3); border-top: 1px solid var(--border); display:flex; gap:8px; align-items:center;">
+              <span style="font-size:11px; color:var(--text3)">Quick load:</span>
+              <button class="btn btn-ghost" style="padding:4px 10px; font-size:11px" onclick="loadExample('sqli')">SQL Injection</button>
+              <button class="btn btn-ghost" style="padding:4px 10px; font-size:11px" onclick="loadExample('xss')">XSS Bug</button>
+              <button class="btn btn-ghost" style="padding:4px 10px; font-size:11px" onclick="loadExample('secret')">Hardcoded Secret</button>
+              <button class="btn btn-ghost" style="padding:4px 10px; font-size:11px" onclick="loadExample('clean')">Clean Code</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Output -->
+        <div class="panel" style="display:flex; flex-direction:column; overflow:hidden;">
+          <div class="panel-header">
+            <span style="color:var(--accent2)">◈</span>
+            <span class="panel-title">AI Review Results</span>
+            <span class="panel-sub" id="result-time"></span>
+          </div>
+
+          <!-- Summary bar (hidden initially) -->
+          <div class="summary-bar" id="summary-bar" style="display:none">
+            <div class="summary-item"><div class="summary-dot" style="background:var(--critical)"></div><span id="cnt-critical" style="color:var(--critical)">0</span> Critical</div>
+            <div class="summary-item"><div class="summary-dot" style="background:var(--high)"></div><span id="cnt-high" style="color:var(--high)">0</span> High</div>
+            <div class="summary-item"><div class="summary-dot" style="background:var(--medium)"></div><span id="cnt-medium" style="color:var(--medium)">0</span> Medium</div>
+            <div class="summary-item"><div class="summary-dot" style="background:var(--low)"></div><span id="cnt-low" style="color:var(--low)">0</span> Low</div>
+            <div class="summary-item"><div class="summary-dot" style="background:var(--info)"></div><span id="cnt-info" style="color:var(--info)">0</span> Info</div>
+            <div class="verdict verdict-approve" id="verdict-badge">—</div>
+          </div>
+
+          <div style="flex:1; overflow-y:auto; padding:16px;" id="result-area">
+            <div class="result-empty" id="result-empty">
+              <div class="result-empty-icon">⚡</div>
+              <div>Paste code and click Run Review</div>
+              <div style="font-size:11px; color:var(--text3)">Powered by Claude claude-sonnet-4-6</div>
+            </div>
+            <div class="loading-state" id="loading-state">
+              <div class="spinner"></div>
+              <div class="loading-steps">
+                <div class="loading-step" id="load-step">Initializing CodeWatch agent...</div>
+              </div>
+            </div>
+            <div class="issue-list" id="issue-list" style="display:none"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECURITY VIEW -->
+    <div class="content" id="view-security">
+      <div style="margin-bottom:16px; display:flex; align-items:center; gap:12px;">
+        <div style="flex:1">
+          <div style="font-family:var(--sans); font-size:13px; font-weight:700; color:var(--text); margin-bottom:4px">OWASP Top 10 Security Scanner</div>
+          <div style="font-size:11px; color:var(--text3)">Detects the most critical web application security risks</div>
+        </div>
+        <button class="btn btn-danger" onclick="runSecurityScan()">🛡 Run Security Scan</button>
+      </div>
+
+      <div class="panel" style="margin-bottom:16px;">
+        <div class="panel-header">
+          <span style="color:var(--accent)">❮❯</span>
+          <span class="panel-title">Code to Scan</span>
+        </div>
+        <div class="panel-body" style="padding:0">
+          <textarea class="code-input" id="sec-input" style="min-height:160px;" placeholder="// Paste code to security-scan..."></textarea>
+        </div>
+      </div>
+
+      <div class="scan-bar"><div class="scan-bar-fill" id="scan-progress"></div></div>
+
+      <div class="owasp-grid" id="owasp-grid">
+        <!-- Populated by JS -->
+      </div>
+
+      <div style="margin-top:16px;" id="sec-findings" style="display:none"></div>
+    </div>
+
+    <!-- ANALYZE VIEW -->
+    <div class="content" id="view-analyze">
+      <div class="panel" style="margin-bottom:16px;">
+        <div class="panel-header">
+          <span style="color:var(--accent2)">💬</span>
+          <span class="panel-title">Ask CodeWatch</span>
+          <span class="panel-sub">Natural language code analysis</span>
+        </div>
+        <div class="panel-body">
+          <div class="prompt-area">
+            <textarea class="prompt-input" id="analyze-prompt" placeholder='Ask anything about code...
+
+Examples:
+• "Explain what this function does"
+• "Find performance bottlenecks"
+• "Suggest better variable names"
+• "Add error handling to this code"
+• "Convert this to async/await"
+• "Write unit tests for this function"' rows="4"></textarea>
+            <button class="btn btn-primary" onclick="runAnalyze()" style="align-self:flex-end">Send ↗</button>
+          </div>
+          <textarea class="code-input" id="analyze-code" style="min-height:150px;" placeholder="// Paste code to analyze..."></textarea>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <span style="color:var(--accent)">◈</span>
+          <span class="panel-title">CodeWatch Response</span>
+          <div id="analyze-spinner" class="spinner" style="display:none; margin-left:auto"></div>
+        </div>
+        <div class="panel-body">
+          <div class="stream-output" id="analyze-output">Ask a question above to get started. CodeWatch will analyze your code using Claude claude-sonnet-4-6.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CHANGELOG VIEW -->
+    <div class="content" id="view-changelog">
+      <div class="panel-grid" style="grid-template-columns: 1fr 1fr;">
+        <div class="panel">
+          <div class="panel-header">
+            <span style="color:var(--accent)">📋</span>
+            <span class="panel-title">Commit Messages</span>
+          </div>
+          <div class="panel-body" style="padding:0">
+            <textarea class="code-input" id="changelog-input" style="min-height:300px;" placeholder="Paste commit messages (one per line):
+
+feat: add OAuth2 authentication flow
+fix: resolve memory leak in connection pool
+refactor: extract validation logic to separate module
+feat: implement rate limiting middleware
+fix: correct timezone handling in date utils
+chore: update dependencies to latest versions
+feat: add CSV export functionality
+fix: prevent XSS in user profile display
+perf: optimize database query for user lookup
+docs: update API documentation"></textarea>
+          </div>
+          <div style="padding:12px 14px; border-top:1px solid var(--border); display:flex; gap:8px; align-items:center;">
+            <input id="version-input" placeholder="Version (e.g. v1.2.0)" style="flex:1; background:var(--bg3); border:1px solid var(--border); color:var(--text); font-family:var(--mono); font-size:12px; padding:7px 12px; border-radius:6px; outline:none;">
+            <button class="btn btn-primary" onclick="runChangelog()">Generate →</button>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <span style="color:var(--accent2)">◈</span>
+            <span class="panel-title">Generated CHANGELOG.md</span>
+            <button class="btn btn-ghost" style="margin-left:auto; padding:4px 10px; font-size:11px" onclick="copyChangelog()">Copy</button>
+          </div>
+          <div class="panel-body" style="padding:0;">
+            <div class="stream-output" id="changelog-output" style="border:none; border-radius:0; min-height:340px; background:var(--bg3); padding:16px; font-size:12px;">Paste commit messages and click Generate to create a formatted CHANGELOG.md</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONFIG VIEW -->
+    <div class="content" id="view-config">
+      <div class="inner-tabs">
+        <div class="inner-tab active" onclick="switchInner('cfg-agent')">agent.yaml</div>
+        <div class="inner-tab" onclick="switchInner('cfg-soul')">SOUL.md</div>
+        <div class="inner-tab" onclick="switchInner('cfg-rules')">RULES.md</div>
+        <div class="inner-tab" onclick="switchInner('cfg-skills')">Skills</div>
+      </div>
+
+      <div class="inner-content active" id="cfg-agent">
+        <div class="config-file">
+          <div class="config-file-header">📄 agent.yaml <span style="margin-left:auto;color:var(--accent2)">spec: 0.1.0</span></div>
+          <div class="config-file-body">spec_version: "0.1.0"
+name: codewatch
+version: 0.1.0
+description: "AI code review agent that monitors repos, reviews PRs, and catches security issues"
+model:
+  preferred: claude-sonnet-4-5-20250929
+skills:
+  - pr-review
+  - commit-analyzer
+  - security-scan
+  - changelog-gen
+tags:
+  - code-review
+  - security
+  - developer-tools
+  - hackathon</div>
+        </div>
+      </div>
+
+      <div class="inner-content" id="cfg-soul">
+        <div class="config-file">
+          <div class="config-file-header">🧠 SOUL.md <span style="margin-left:auto;color:var(--accent2)">Identity</span></div>
+          <div class="config-file-body"># Soul
+
+## Core Identity
+I am CodeWatch — a senior-level code review engineer and security analyst.
+I specialize in making codebases safer, cleaner, and more maintainable.
+
+## Communication Style
+I am direct and technical. Every response is:
+- Structured: I use severity levels (CRITICAL, HIGH, MEDIUM, LOW, INFO)
+- Specific: I reference exact file names, line numbers, variable names
+- Actionable: I always provide a concrete fix, not just problem identification
+- Concise: I omit filler words. Developers are busy.
+
+## Values
+- Security is non-negotiable
+- Clarity beats cleverness
+- I respect developers' time
+- I celebrate well-written code
+
+## Expertise
+- OWASP Top 10 vulnerability patterns
+- Git diff analysis and semantic code understanding
+- Code complexity metrics
+- Performance anti-patterns and memory leak detection</div>
+        </div>
+      </div>
+
+      <div class="inner-content" id="cfg-rules">
+        <div class="config-file">
+          <div class="config-file-header">⚖️ RULES.md <span style="margin-left:auto;color:var(--critical)">Constraints</span></div>
+          <div class="config-file-body"># Rules
+
+## Must Always
+- Label every issue with severity: CRITICAL, HIGH, MEDIUM, LOW, INFO
+- Provide a concrete fix for every CRITICAL or HIGH issue
+- Include summary counts at end of every review
+- Cite exact line numbers when referencing code locations
+- Return structured output (JSON or Markdown with clear headers)
+
+## Must Never
+- Approve a PR if a CRITICAL vulnerability exists
+- Expose or log API keys, tokens, or credentials in code
+- Rewrite entire files unprompted
+- Make assumptions without stating them explicitly
+- Generate code that introduces new security vulnerabilities
+- Target the developer personally rather than the code</div>
+        </div>
+      </div>
+
+      <div class="inner-content" id="cfg-skills">
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <div class="config-file">
+            <div class="config-file-header">⚡ pr-review/SKILL.md <span class="tag tag-blue" style="margin-left:auto">Bash Read Write</span></div>
+            <div class="config-file-body" style="max-height:100px">Reviews pull request diffs, assigns severity scores (CRITICAL/HIGH/MEDIUM/LOW/INFO), and provides an APPROVE or REQUEST CHANGES verdict with actionable per-file feedback.</div>
+          </div>
+          <div class="config-file">
+            <div class="config-file-header">🛡 security-scan/SKILL.md <span class="tag tag-blue" style="margin-left:auto">Bash Read Write</span></div>
+            <div class="config-file-body" style="max-height:100px">Scans for OWASP Top 10 vulnerabilities including SQL injection, XSS, hardcoded secrets, broken auth, and insecure dependencies. Redacts secrets, never prints them.</div>
+          </div>
+          <div class="config-file">
+            <div class="config-file-header">📊 commit-analyzer/SKILL.md <span class="tag tag-blue" style="margin-left:auto">Bash Read Write</span></div>
+            <div class="config-file-body" style="max-height:100px">Fetches and categorizes recent commits into: features added, bugs fixed, refactors, config changes. Produces a structured plain-English summary of what changed.</div>
+          </div>
+          <div class="config-file">
+            <div class="config-file-header">📋 changelog-gen/SKILL.md <span class="tag tag-blue" style="margin-left:auto">Bash Read Write</span></div>
+            <div class="config-file-body" style="max-height:100px">Generates Keep-a-Changelog standard CHANGELOG.md from commit messages, grouping into Breaking Changes, Added, Fixed, Changed, and Performance sections.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HISTORY VIEW -->
+    <div class="content" id="view-history">
+      <div style="margin-bottom:16px; font-family:var(--sans); font-size:13px; font-weight:700; color:var(--text)">Review History</div>
+      <div id="history-list">
+        <div style="text-align:center; color:var(--text3); font-size:12px; padding:40px">No reviews yet. Run a code review to see history here.</div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<script>
+// ---- STATE ----
+const state = {
+  reviews: 0, issues: 0, critical: 0, history: [],
+  currentView: 'review'
+};
+
+const EXAMPLES = {
+  sqli: {
+    lang: 'javascript',
+    code: `// User authentication - VULNERABLE
+async function loginUser(username, password) {
+  // Direct string concatenation - SQL injection risk!
+  const query = "SELECT * FROM users WHERE username='" + username + "' AND password='" + password + "'";
+  const user = await db.query(query);
+  
+  if (user.length > 0) {
+    // Missing: password hashing check
+    req.session.userId = user[0].id;
+    req.session.isAdmin = user[0].role === 'admin';
+    return { success: true, user: user[0] }; // Exposes full user object!
+  }
+  return { success: false };
+}
+
+// Reset password - no rate limiting
+app.post('/reset-password', async (req, res) => {
+  const { email } = req.body;
+  const token = Math.random().toString(); // Weak token!
+  await db.query("UPDATE users SET reset_token='" + token + "' WHERE email='" + email + "'");
+  sendEmail(email, "Your token: " + token);
+  res.json({ message: "Email sent" });
+});`
+  },
+  xss: {
+    lang: 'javascript',
+    code: `// Comment rendering - VULNERABLE TO XSS
+function renderComment(comment) {
+  // Direct innerHTML assignment - XSS vulnerability!
+  document.getElementById('comments').innerHTML += '<div>' + comment.text + '</div>';
+}
+
+// User profile page
+function showProfile(userId) {
+  fetch('/api/user/' + userId)
+    .then(r => r.json())
+    .then(user => {
+      // XSS via eval!
+      eval('var name = "' + user.name + '"');
+      document.title = user.name; // Fine
+      
+      // Dangerous - unescaped user content
+      document.getElementById('bio').innerHTML = user.bio;
+      document.getElementById('website').href = user.website; // javascript: protocol risk
+    });
+}
+
+// Search results
+const searchTerm = new URLSearchParams(window.location.search).get('q');
+document.write('Results for: ' + searchTerm); // XSS via document.write!`
+  },
+  secret: {
+    lang: 'python',
+    code: `# Payment processing module
+import stripe
+import boto3
+
+# DANGER: Hardcoded credentials
+STRIPE_SECRET_KEY = "sk_live_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmn"
+AWS_ACCESS_KEY = "AKIAIOSFODNN7EXAMPLE"
+AWS_SECRET_KEY = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+DATABASE_URL = "postgresql://admin:password123@prod-db.company.com/users"
+
+stripe.api_key = STRIPE_SECRET_KEY
+
+def charge_customer(amount, card_token, customer_email):
+    # Missing input validation
+    charge = stripe.Charge.create(
+        amount=amount,
+        currency="usd",
+        source=card_token,
+        description=f"Charge for {customer_email}"
+    )
+    # Logging sensitive data!
+    print(f"Charged {customer_email} card {card_token} for ${amount}")
+    return charge
+
+def upload_to_s3(file_data, filename):
+    s3 = boto3.client('s3',
+        aws_access_key_id=AWS_ACCESS_KEY,
+        aws_secret_access_key=AWS_SECRET_KEY,
+        region_name='us-east-1'
+    )
+    s3.put_object(Bucket='user-data', Key=filename, Body=file_data, ACL='public-read')`
+  },
+  clean: {
+    lang: 'typescript',
+    code: `// Well-structured authentication service
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+import { z } from 'zod';
+import rateLimit from 'express-rate-limit';
+
+const LoginSchema = z.object({
+  email: z.string().email().max(255),
+  password: z.string().min(8).max(128),
+});
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5,
+  message: 'Too many login attempts, please try again later',
+});
+
+export async function authenticateUser(
+  email: string,
+  password: string
+): Promise<{ token: string } | null> {
+  // Validate input
+  const parsed = LoginSchema.safeParse({ email, password });
+  if (!parsed.success) {
+    throw new ValidationError('Invalid input format');
+  }
+  
+  // Parameterized query - SQL injection safe
+  const user = await db.query(
+    'SELECT id, password_hash, role FROM users WHERE email = $1',
+    [parsed.data.email]
+  );
+
+  if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+    // Constant-time response prevents user enumeration
+    await bcrypt.hash('dummy', 10);
+    return null;
+  }
+
+  const token = jwt.sign(
+    { userId: user.id, role: user.role },
+    process.env.JWT_SECRET!,
+    { expiresIn: '1h', algorithm: 'HS256' }
+  );
+
+  return { token };
+}`
+  }
+};
+
+const OWASP_CATEGORIES = [
+  { id: 'A01', name: 'Broken Access Control', desc: 'Improper restrictions on authenticated users' },
+  { id: 'A02', name: 'Cryptographic Failures', desc: 'Weak encryption or exposed sensitive data' },
+  { id: 'A03', name: 'Injection', desc: 'SQL, NoSQL, OS, and LDAP injection' },
+  { id: 'A04', name: 'Insecure Design', desc: 'Missing security controls by design' },
+  { id: 'A05', name: 'Security Misconfiguration', desc: 'Insecure default configurations' },
+  { id: 'A06', name: 'Vulnerable Components', desc: 'Outdated or vulnerable dependencies' },
+  { id: 'A07', name: 'Auth Failures', desc: 'Broken authentication mechanisms' },
+  { id: 'A08', name: 'Integrity Failures', desc: 'Code/data integrity violations' },
+  { id: 'A09', name: 'Logging Failures', desc: 'Insufficient security logging' },
+  { id: 'A10', name: 'SSRF', desc: 'Server-side request forgery' },
+];
+
+// Init OWASP grid
+function initOwaspGrid() {
+  const grid = document.getElementById('owasp-grid');
+  grid.innerHTML = OWASP_CATEGORIES.map(c => `
+    <div class="owasp-card" id="owasp-${c.id}">
+      <div class="owasp-num">${c.id}:2021</div>
+      <div class="owasp-name">${c.name}</div>
+      <div class="owasp-status" id="owasp-status-${c.id}">— Not scanned</div>
+    </div>
+  `).join('');
+}
+initOwaspGrid();
+
+// ---- NAV ----
+function switchView(view) {
+  state.currentView = view;
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.nav-item')[
+    ['review','security','analyze','changelog','config','history'].indexOf(view)
+  ]?.classList.add('active');
+  document.querySelectorAll('.content').forEach(el => el.classList.remove('active'));
+  document.getElementById('view-' + view)?.classList.add('active');
+  
+  const titles = {
+    review: ['PR Code Review', 'Paste code to analyze with AI'],
+    security: ['Security Scanner', 'OWASP Top 10 vulnerability detection'],
+    analyze: ['AI Code Analysis', 'Ask CodeWatch anything about your code'],
+    changelog: ['Changelog Generator', 'Generate CHANGELOG.md from commit messages'],
+    config: ['Agent Configuration', 'GitAgent standard — agent.yaml, SOUL.md, RULES.md'],
+    history: ['Review History', 'All past code reviews']
+  };
+  document.getElementById('view-title').textContent = titles[view][0];
+  document.getElementById('view-sub').textContent = titles[view][1];
+  
+  // Update run button
+  const btnText = { review:'▶ Run Review', security:'🛡 Run Scan', analyze:'💬 Ask', changelog:'Generate →', config:null, history:null };
+  const btn = document.getElementById('run-btn');
+  if (btnText[view]) { btn.style.display=''; btn.textContent = btnText[view]; }
+  else btn.style.display = 'none';
+  
+  const langSel = document.getElementById('lang-select');
+  langSel.style.display = ['review','security'].includes(view) ? '' : 'none';
+}
+
+function switchInner(id) {
+  document.querySelectorAll('.inner-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.inner-content').forEach(c => c.classList.remove('active'));
+  document.getElementById(id)?.classList.add('active');
+  event.target.classList.add('active');
+}
+
+// ---- EXAMPLES ----
+function loadExample(type) {
+  const ex = EXAMPLES[type];
+  document.getElementById('code-input').value = ex.code;
+  document.getElementById('lang-select').value = ex.lang;
+}
+
+function clearAll() {
+  document.getElementById('code-input').value = '';
+  document.getElementById('result-empty').style.display = 'flex';
+  document.getElementById('issue-list').style.display = 'none';
+  document.getElementById('summary-bar').style.display = 'none';
+  document.getElementById('loading-state').classList.remove('visible');
+  document.getElementById('result-time').textContent = '';
+}
+
+// ---- MAIN REVIEW ----
+async function runAnalysis() {
+  const code = document.getElementById('code-input').value.trim();
+  if (!code) { loadExample('sqli'); return; }
+  
+  const lang = document.getElementById('lang-select').value;
+  const btn = document.getElementById('run-btn');
+  btn.disabled = true;
+  
+  document.getElementById('result-empty').style.display = 'none';
+  document.getElementById('issue-list').style.display = 'none';
+  document.getElementById('summary-bar').style.display = 'none';
+  
+  const loadEl = document.getElementById('loading-state');
+  const stepEl = document.getElementById('load-step');
+  loadEl.classList.add('visible');
+  
+  const steps = [
+    'Initializing CodeWatch agent...',
+    'Loading SOUL.md identity...',
+    'Applying RULES.md constraints...',
+    'Activating pr-review skill...',
+    'Analyzing code with Claude claude-sonnet-4-6...',
+    'Scoring severity levels...',
+    'Generating fixes...'
+  ];
+  let si = 0;
+  const stepInterval = setInterval(() => {
+    if (si < steps.length) stepEl.textContent = steps[si++];
+  }, 600);
+  
+  const t0 = Date.now();
+  
+  try {
+    const prompt = `You are CodeWatch, a senior AI code review agent. Review the following ${lang} code.
+
+Return ONLY a valid JSON object (no markdown, no backticks) with this exact structure:
+{
+  "verdict": "APPROVE" | "REQUEST_CHANGES" | "NEEDS_DISCUSSION",
+  "summary": "One sentence overall assessment",
+  "score": 0-100,
+  "issues": [
+    {
+      "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INFO",
+      "title": "Short issue title",
+      "location": "line X or function name",
+      "description": "What the problem is and why it matters",
+      "fix": "Concrete code fix or recommendation"
+    }
+  ]
+}
+
+Rules:
+- If there are CRITICAL issues, verdict must be REQUEST_CHANGES
+- Score reflects code quality: 0=terrible, 100=perfect
+- Find REAL issues, not style nitpicks
+- For secrets/keys found, describe them but REDACT the actual value as [REDACTED]
+- Provide at least 1 issue, max 8
+
+Code to review (${lang}):
+\`\`\`${lang}
+${code}
+\`\`\``;
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    
+    clearInterval(stepInterval);
+    loadEl.classList.remove('visible');
+    
+    const data = await res.json();
+    const text = data.content?.[0]?.text || '';
+    
+    let review;
+    try {
+      const clean = text.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
+      review = JSON.parse(clean);
+    } catch(e) {
+      // Fallback parse attempt
+      const match = text.match(/\{[\s\S]*\}/);
+      if (match) review = JSON.parse(match[0]);
+      else throw new Error('Failed to parse response');
+    }
+    
+    renderReview(review, Date.now() - t0);
+    saveHistory(review, lang, code.slice(0,80));
+    btn.disabled = false;
+    
+  } catch(err) {
+    clearInterval(stepInterval);
+    loadEl.classList.remove('visible');
+    btn.disabled = false;
+    document.getElementById('issue-list').style.display = 'flex';
+    document.getElementById('issue-list').innerHTML = `
+      <div class="issue-card high">
+        <div class="issue-header">
+          <span class="severity-badge badge-high">ERROR</span>
+          <span class="issue-title">API Error</span>
+        </div>
+        <div class="issue-desc">${err.message}. Make sure you're running this from claude.ai where the API is available.</div>
+      </div>`;
+  }
+}
+
+function renderReview(review, ms) {
+  const counts = {critical:0, high:0, medium:0, low:0, info:0};
+  (review.issues || []).forEach(i => { counts[i.severity.toLowerCase()]++; });
+  
+  document.getElementById('cnt-critical').textContent = counts.critical;
+  document.getElementById('cnt-high').textContent = counts.high;
+  document.getElementById('cnt-medium').textContent = counts.medium;
+  document.getElementById('cnt-low').textContent = counts.low;
+  document.getElementById('cnt-info').textContent = counts.info;
+  
+  const vEl = document.getElementById('verdict-badge');
+  vEl.className = 'verdict';
+  if (review.verdict === 'APPROVE') { vEl.classList.add('verdict-approve'); vEl.textContent = '✓ APPROVE'; }
+  else if (review.verdict === 'REQUEST_CHANGES') { vEl.classList.add('verdict-reject'); vEl.textContent = '✗ REQUEST CHANGES'; }
+  else { vEl.classList.add('verdict-discuss'); vEl.textContent = '⚠ NEEDS DISCUSSION'; }
+  
+  document.getElementById('summary-bar').style.display = 'flex';
+  document.getElementById('result-time').textContent = `${(ms/1000).toFixed(1)}s • score: ${review.score}/100`;
+  
+  const issueList = document.getElementById('issue-list');
+  issueList.style.display = 'flex';
+  issueList.innerHTML = '';
+  
+  if (review.summary) {
+    const sumDiv = document.createElement('div');
+    sumDiv.style.cssText = 'font-size:12px;color:var(--text2);padding:10px 14px;background:var(--bg3);border-radius:8px;margin-bottom:4px;line-height:1.6;border:1px solid var(--border)';
+    sumDiv.innerHTML = `<span style="color:var(--accent2);font-size:10px;letter-spacing:.1em">SUMMARY</span><br>${review.summary}`;
+    issueList.appendChild(sumDiv);
+  }
+  
+  (review.issues || []).forEach((issue, idx) => {
+    const sev = issue.severity.toLowerCase();
+    const card = document.createElement('div');
+    card.className = `issue-card ${sev}`;
+    card.style.animationDelay = `${idx * 0.08}s`;
+    card.innerHTML = `
+      <div class="issue-header">
+        <span class="severity-badge badge-${sev}">${issue.severity}</span>
+        <span class="issue-title">${issue.title}</span>
+        <span class="issue-location">${issue.location || ''}</span>
+      </div>
+      <div class="issue-desc">${issue.description}</div>
+      ${issue.fix ? `<div class="issue-fix"><div class="issue-fix-label">RECOMMENDED FIX</div>${issue.fix}</div>` : ''}
+    `;
+    issueList.appendChild(card);
+  });
+  
+  // Update stats
+  state.reviews++;
+  state.issues += (review.issues || []).length;
+  state.critical += counts.critical;
+  updateStats(review.score);
+}
+
+function updateStats(score) {
+  document.getElementById('stat-reviews').textContent = state.reviews;
+  document.getElementById('stat-issues').textContent = state.issues;
+  document.getElementById('stat-critical').textContent = state.critical;
+  document.getElementById('stat-score').textContent = score ? score : '—';
+  document.getElementById('vuln-count').textContent = state.critical;
+}
+
+function saveHistory(review, lang, preview) {
+  state.history.unshift({ review, lang, preview, ts: new Date() });
+  document.getElementById('history-notif').style.display = 'block';
+  renderHistory();
+}
+
+function renderHistory() {
+  const list = document.getElementById('history-list');
+  if (!state.history.length) return;
+  list.innerHTML = state.history.map((h, i) => {
+    const hasCritical = h.review.issues?.some(i => i.severity === 'CRITICAL');
+    return `
+    <div class="history-item" onclick="loadFromHistory(${i})">
+      <div class="history-dot" style="background:${hasCritical ? 'var(--critical)' : 'var(--accent2)'}"></div>
+      <div class="history-info">
+        <div class="history-title">${h.lang} — ${h.preview}...</div>
+        <div class="history-meta">${h.ts.toLocaleTimeString()} · ${h.review.issues?.length || 0} issues · ${h.review.verdict}</div>
+      </div>
+      <div class="history-score" style="color:${h.review.score > 70 ? 'var(--accent2)' : h.review.score > 40 ? 'var(--medium)' : 'var(--critical)'}">${h.review.score}</div>
+    </div>`;
+  }).join('');
+}
+
+function loadFromHistory(idx) {
+  switchView('review');
+}
+
+// ---- SECURITY SCAN ----
+async function runSecurityScan() {
+  const code = document.getElementById('sec-input').value.trim();
+  if (!code) {
+    document.getElementById('sec-input').value = EXAMPLES.sqli.code;
+    return;
+  }
+  
+  const progress = document.getElementById('scan-progress');
+  progress.style.width = '0%';
+  
+  // Animate progress
+  let p = 0;
+  const prog = setInterval(() => {
+    p += Math.random() * 15;
+    if (p > 85) { clearInterval(prog); }
+    progress.style.width = Math.min(p, 85) + '%';
+  }, 300);
+  
+  // Reset OWASP cards
+  OWASP_CATEGORIES.forEach(c => {
+    const card = document.getElementById(`owasp-${c.id}`);
+    card.className = 'owasp-card';
+    document.getElementById(`owasp-status-${c.id}`).textContent = '⟳ Scanning...';
+    document.getElementById(`owasp-status-${c.id}`).className = 'owasp-status';
+  });
+  
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: `You are CodeWatch security scanner. Analyze this code for OWASP Top 10 vulnerabilities.
+
+Return ONLY valid JSON (no markdown):
+{
+  "findings": {
+    "A01": { "detected": true/false, "detail": "brief description or null" },
+    "A02": { "detected": true/false, "detail": "..." },
+    "A03": { "detected": true/false, "detail": "..." },
+    "A04": { "detected": true/false, "detail": "..." },
+    "A05": { "detected": true/false, "detail": "..." },
+    "A06": { "detected": true/false, "detail": "..." },
+    "A07": { "detected": true/false, "detail": "..." },
+    "A08": { "detected": true/false, "detail": "..." },
+    "A09": { "detected": true/false, "detail": "..." },
+    "A10": { "detected": true/false, "detail": "..." }
+  },
+  "critical_count": 0,
+  "summary": "One sentence overall security assessment"
+}
+
+Code:
+${code}` }]
+      })
+    });
+    
+    clearInterval(prog);
+    progress.style.width = '100%';
+    
+    const data = await res.json();
+    const text = data.content?.[0]?.text || '';
+    const clean = text.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
+    const result = JSON.parse(clean.match(/\{[\s\S]*\}/)?.[0] || clean);
+    
+    // Update OWASP cards
+    Object.entries(result.findings || {}).forEach(([id, finding]) => {
+      const card = document.getElementById(`owasp-${id}`);
+      const statusEl = document.getElementById(`owasp-status-${id}`);
+      if (finding.detected) {
+        card.className = 'owasp-card detected';
+        statusEl.className = 'owasp-status detected';
+        statusEl.textContent = '⚠ ' + (finding.detail || 'Detected');
+      } else {
+        card.className = 'owasp-card clean';
+        statusEl.className = 'owasp-status clean';
+        statusEl.textContent = '✓ Clean';
+      }
+    });
+    
+    const findingsEl = document.getElementById('sec-findings');
+    findingsEl.style.display = 'block';
+    findingsEl.innerHTML = `
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:14px;">
+        <div style="font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:6px">SECURITY ASSESSMENT</div>
+        <div style="font-size:13px;color:var(--text);line-height:1.6">${result.summary || ''}</div>
+      </div>`;
+    
+    state.critical += result.critical_count || 0;
+    updateStats(null);
+    
+  } catch(err) {
+    clearInterval(prog);
+    progress.style.width = '0%';
+    OWASP_CATEGORIES.forEach(c => {
+      document.getElementById(`owasp-status-${c.id}`).textContent = '— Error';
+    });
+  }
+}
+
+// ---- ANALYZE ----
+async function runAnalyze() {
+  const prompt = document.getElementById('analyze-prompt').value.trim();
+  const code = document.getElementById('analyze-code').value.trim();
+  if (!prompt) return;
+  
+  const outputEl = document.getElementById('analyze-output');
+  const spinner = document.getElementById('analyze-spinner');
+  outputEl.textContent = '';
+  spinner.style.display = 'block';
+  
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: `You are CodeWatch, a senior code review AI agent. Be direct, technical, and concise.
+
+Task: ${prompt}
+
+${code ? `Code:\n\`\`\`\n${code}\n\`\`\`` : ''}
+
+Respond with clear, actionable analysis. Use code blocks where appropriate.` }]
+      })
+    });
+    
+    spinner.style.display = 'none';
+    const data = await res.json();
+    const text = data.content?.[0]?.text || 'No response';
+    
+    // Typewriter effect
+    outputEl.textContent = '';
+    let i = 0;
+    const cursor = document.createElement('span');
+    cursor.className = 'cursor';
+    outputEl.appendChild(cursor);
+    
+    const typeInterval = setInterval(() => {
+      if (i >= text.length) { clearInterval(typeInterval); cursor.remove(); return; }
+      cursor.before(text[i++]);
+    }, 8);
+    
+  } catch(err) {
+    spinner.style.display = 'none';
+    outputEl.textContent = 'Error: ' + err.message;
+  }
+}
+
+// ---- CHANGELOG ----
+async function runChangelog() {
+  const commits = document.getElementById('changelog-input').value.trim();
+  const version = document.getElementById('version-input').value.trim() || 'v1.0.0';
+  if (!commits) return;
+  
+  const outputEl = document.getElementById('changelog-output');
+  outputEl.textContent = 'Generating...';
+  
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: `Generate a CHANGELOG.md entry in Keep-a-Changelog format for version ${version}.
+
+Commits:
+${commits}
+
+Format:
+## [${version}] - ${new Date().toISOString().split('T')[0]}
+
+### Breaking Changes
+(if any)
+
+### Added
+- ...
+
+### Fixed
+- ...
+
+### Changed
+- ...
+
+### Performance
+(if any)
+
+Group the commits properly. Write clear, user-facing descriptions. Return only the changelog markdown, nothing else.` }]
+      })
+    });
+    
+    const data = await res.json();
+    outputEl.textContent = data.content?.[0]?.text || 'Error generating changelog';
+    
+  } catch(err) {
+    outputEl.textContent = 'Error: ' + err.message;
+  }
+}
+
+function copyChangelog() {
+  navigator.clipboard.writeText(document.getElementById('changelog-output').textContent)
+    .then(() => alert('Copied to clipboard!'));
+}
+
+// Global run button handler
+document.getElementById('run-btn').addEventListener('click', function() {
+  const view = state.currentView;
+  if (view === 'review') runAnalysis();
+  else if (view === 'security') runSecurityScan();
+  else if (view === 'analyze') runAnalyze();
+  else if (view === 'changelog') runChangelog();
+});
+
+// Allow Ctrl+Enter to run
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    document.getElementById('run-btn').click();
+  }
+});
+</script>
+</body>
+</html>
